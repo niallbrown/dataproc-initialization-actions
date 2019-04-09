@@ -56,6 +56,8 @@ else
     readonly db_admin_password_parameter="-p${db_admin_password}"
 fi
 
+#get hostname and build the hive principal URI for beeline
+
 # Database password to use to access metastore.
 readonly db_hive_password_uri="$(/usr/share/google/get_metadata_value attributes/db-hive-password-uri)"
 if [[ -n "${db_hive_password_uri}" ]]; then
