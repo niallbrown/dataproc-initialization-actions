@@ -58,6 +58,7 @@ fi
 
 #get hostname and build the hive principal URI for beeline
 
+
 # Database password to use to access metastore.
 readonly db_hive_password_uri="$(/usr/share/google/get_metadata_value attributes/db-hive-password-uri)"
 if [[ -n "${db_hive_password_uri}" ]]; then
@@ -170,7 +171,7 @@ EOF
   systemctl enable cloud-sql-proxy
   systemctl start cloud-sql-proxy \
     || err 'Unable to start cloud-sql-proxy service'
-    
+
   if [[ $enable_cloud_sql_metastore = "true" ]]; then
     run_with_retries nc -zv localhost ${metastore_proxy_port}
   fi
@@ -253,11 +254,25 @@ function run_validation() {
   /usr/lib/hive/bin/schematool -dbType mysql -info || \
       err 'Run /usr/lib/hive/bin/schematool -dbType mysql -upgradeSchemaFrom <schema-version> to upgrade the schema. Note that this may break Hive metastores that depend on the old schema'
 
+if(metadata)
   # Validate it's functioning.
-  if ! timeout 60s beeline -u jdbc:hive2://localhost:10000 -e 'SHOW TABLES;' >& /dev/null; then
-    err 'Failed to bring up Cloud SQL Metastore'
+  if[[ "${secure}" == true ]]; then
+    if(kinit ${db_admin_user}); then
+      klist
+      if ! timeout 60s beeline -u "jdbc:hive2://localhost:10000/default;principal=hive/dp-cluster-kerberos-1-m@C.LS-BEAVERS.INTERNAL" -n ${db_admin_user} -p ${db_admin_password_parameter} -e 'SHOW TABLES;' >& /dev/null; then
+        err 'Failed to bring up Cloud SQL Metastore'
+      else
+        echo 'Cloud SQL Hive Metastore initialization succeeded' >&2
+      fi
+    else
+      err 'Failed to get kerberos tgt'
+    fi
   else
-    echo 'Cloud SQL Hive Metastore initialization succeeded' >&2
+    if ! timeout 60s beeline -u jdbc:hive2://localhost:10000 -e 'SHOW TABLES;' >& /dev/null; then
+      err 'Failed to bring up Cloud SQL Metastore'
+    else
+      echo 'Cloud SQL Hive Metastore initialization succeeded' >&2
+    fi
   fi
 
 }
@@ -285,6 +300,9 @@ function main() {
 
   local role
   role="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
+
+  local secure
+  secure="$(/usr/share/google/get_metadata_value attributes/dataproc-secure || false)"
 
   local metastore_instance
   metastore_instance="$(/usr/share/google/get_metadata_value attributes/hive-metastore-instance || true)"
