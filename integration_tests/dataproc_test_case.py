@@ -1,17 +1,26 @@
 import os
+import sys
 import json
+import random
+import string
 import logging
 import datetime
 import unittest
 import subprocess
 from threading import Timer
 
+BASE_TEST_CASE = unittest.TestCase
+PARALLEL_RUN = False
+if "fastunit" in sys.modules:
+    import fastunit
+    BASE_TEST_CASE = fastunit.TestCase
+    PARALLEL_RUN = True
 logging.basicConfig(level=os.getenv("LOG_LEVEL", logging.WARNING))
 
 DEFAULT_TIMEOUT = 10  # minutes
 
 
-class DataprocTestCase(unittest.TestCase):
+class DataprocTestCase(BASE_TEST_CASE):
     DEFAULT_ARGS = {
         "SINGLE": [
             "--single-node",
@@ -39,12 +48,13 @@ class DataprocTestCase(unittest.TestCase):
                       metadata=None, scopes=None, properties=None,
                       timeout_in_minutes=None, beta=False,
                       master_accelerator=None, worker_accelerator=None):
-        self.name = "test-{}-{}-{}-{}".format(
+        self.name = "test-{}-{}-{}-{}-{}".format(
             self.COMPONENT,
             configuration.lower(),
             dataproc_version.replace(".", "-"),
-            datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        )
+            datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+            ''.join([random.choice(string.ascii_lowercase + string.digits) for n in range(8)])
+        )[:50]
         self.cluster_version = None
 
         args = self.DEFAULT_ARGS[configuration].copy()
@@ -58,7 +68,8 @@ class DataprocTestCase(unittest.TestCase):
             args.append("--image-version={}".format(dataproc_version))
         if timeout_in_minutes:
             args.append("--initialization-action-timeout {}m".format(timeout_in_minutes))
-        args.append("--initialization-actions {}".format(init_action))
+        if init_action:
+            args.append("--initialization-actions {}".format(init_action))
         if master_accelerator:
             args.append("--master-accelerator {}".format(master_accelerator))
         if worker_accelerator:
@@ -137,4 +148,7 @@ class DataprocTestCase(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if PARALLEL_RUN:
+        fastunit.main()
+    else:
+        unittest.main()
